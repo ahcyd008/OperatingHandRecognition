@@ -5,12 +5,14 @@ import android.content.res.AssetManager
 import android.util.Log
 import com.google.android.gms.tasks.Task
 import com.google.android.gms.tasks.TaskCompletionSource
+import org.json.JSONArray
 import org.tensorflow.lite.Interpreter
 import java.io.FileInputStream
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 import java.nio.channels.FileChannel
+import java.text.DecimalFormat
 import java.util.*
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -76,39 +78,40 @@ class OperatingHandClassifier(private val context: Context) {
         return fileChannel.map(FileChannel.MapMode.READ_ONLY, startOffset, declaredLength)
     }
 
-    private fun classify(inputBuffer: FloatArray): ArrayList<ClassifierLabelResult> {
+    private fun classify(pointList: JSONArray): ClassifierLabelResult {
         if (!isInitialized) {
             throw IllegalStateException("TF Lite Interpreter is not initialized yet.")
         }
-        // Preprocessing: resize the input
-        var startTime: Long = System.nanoTime()
-        val byteBuffer = convertFloatArrayToByteBuffer(inputBuffer)
-        var elapsedTime = (System.nanoTime() - startTime) / 1000000
-        Log.d(TAG, "Preprocessing time = " + elapsedTime + "ms")
+        try {
+            // Preprocessing: resize the input
+            var startTime: Long = System.nanoTime()
+            val byteBuffer = convertFloatArrayToByteBuffer(pointList)
+            var elapsedTime = (System.nanoTime() - startTime) / 1000000
+            Log.d(TAG, "Preprocessing time = " + elapsedTime + "ms")
 
-        startTime = System.nanoTime()
-        val result = Array(1) { FloatArray(OUTPUT_CLASSES_COUNT) }
-        interpreter?.run(byteBuffer, result)
-        elapsedTime = (System.nanoTime() - startTime) / 1000000
-        Log.d(TAG, "Inference time = " + elapsedTime + "ms")
+            startTime = System.nanoTime()
+            val result = Array(1) { FloatArray(OUTPUT_CLASSES_COUNT) }
+            interpreter?.run(byteBuffer, result)
+            elapsedTime = (System.nanoTime() - startTime) / 1000000
+            Log.d(TAG, "Inference time = " + elapsedTime + "ms result=" + result[0].contentToString())
 
-        // return top 4
-        val output = result[0]
-        val returnValue = ArrayList<ClassifierLabelResult>()
-        for (i in 0 .. 3) {
-            val maxIndex = output.indices.maxByOrNull { output[it] } ?: -1
-            if (maxIndex >= 0 && maxIndex < output.size) {
-                returnValue.add(ClassifierLabelResult(maxIndex.toString(), output[maxIndex]))
-                output[maxIndex] = -1f
+            // return top 4
+            val output = result[0][0]
+            return if (output > 0.5f) {
+                ClassifierLabelResult(output, "right")
+            } else {
+                ClassifierLabelResult(1.0f-output, "left")
             }
+        } catch (e: Throwable) {
+            Log.e(TAG, "Inference error", e)
         }
-        return returnValue
+        return ClassifierLabelResult(-1f, "unknown")
     }
 
-    fun classifyAsync(inputBuffer: FloatArray): Task<ArrayList<ClassifierLabelResult>> {
-        val task = TaskCompletionSource<ArrayList<ClassifierLabelResult>>()
+    fun classifyAsync(pointList: JSONArray): Task<ClassifierLabelResult> {
+        val task = TaskCompletionSource<ClassifierLabelResult>()
         executorService.execute {
-            val result = classify(inputBuffer)
+            val result = classify(pointList)
             task.setResult(result)
         }
         return task.task
@@ -121,11 +124,17 @@ class OperatingHandClassifier(private val context: Context) {
         }
     }
 
-    private fun convertFloatArrayToByteBuffer(inputBuffer: FloatArray): ByteBuffer {
+    private fun convertFloatArrayToByteBuffer(pointList: JSONArray): ByteBuffer {
+        Log.d(TAG, "convertFloatArrayToByteBuffer pointList=$pointList")
         val byteBuffer = ByteBuffer.allocateDirect(modelInputSize)
         byteBuffer.order(ByteOrder.nativeOrder())
-        for (value in inputBuffer) {
-            byteBuffer.putFloat(value)
+        val step = pointList.length().toFloat() / sampleCount
+        for (i in 0 until sampleCount) {
+            val e = pointList[(i * step).toInt()] as JSONArray
+            for (j in 0 until tensorSize) {
+                val value = (e[j] as Number).toFloat() // x y w h density dtime
+                byteBuffer.putFloat(value)
+            }
         }
         return byteBuffer
     }
@@ -135,12 +144,16 @@ class OperatingHandClassifier(private val context: Context) {
         private const val MODEL_FILE = "mymodel.tflite"
         private const val FLOAT_TYPE_SIZE = 4
         private const val PIXEL_SIZE = 1
-        private const val OUTPUT_CLASSES_COUNT = 10
+        private const val OUTPUT_CLASSES_COUNT = 1
+
+        const val sampleCount = 9
+        const val tensorSize = 6
     }
 }
 
-class ClassifierLabelResult(var label: String, var score: Float) {
+class ClassifierLabelResult(var score: Float, var label: String) {
     override fun toString(): String {
-        return "(label='$label' score=$score)"
+        val format = DecimalFormat("#.##")
+        return "$label score:${format.format(score)}"
     }
 }

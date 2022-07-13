@@ -1,24 +1,27 @@
 package com.clientai.recog.ohr
 
 import android.os.Bundle
+import android.util.Log
 import android.view.Menu
 import android.view.MotionEvent
+import android.widget.TextView
 import android.widget.Toast
-import com.google.android.material.snackbar.Snackbar
-import com.google.android.material.navigation.NavigationView
+import androidx.appcompat.app.AppCompatActivity
+import androidx.drawerlayout.widget.DrawerLayout
 import androidx.navigation.findNavController
 import androidx.navigation.ui.AppBarConfiguration
 import androidx.navigation.ui.navigateUp
 import androidx.navigation.ui.setupActionBarWithNavController
 import androidx.navigation.ui.setupWithNavController
-import androidx.drawerlayout.widget.DrawerLayout
-import androidx.appcompat.app.AppCompatActivity
 import com.clientai.recog.ohr.databinding.ActivityMainBinding
 import com.clientai.recog.ohr.tflite.OperatingHandClassifier
 import com.clientai.recog.ohr.tracker.MotionEventTracker
+import com.google.android.material.navigation.NavigationView
+import com.google.android.material.snackbar.Snackbar
+import org.json.JSONArray
 import java.lang.ref.WeakReference
 
-class MainActivity : AppCompatActivity() {
+class MainActivity : AppCompatActivity(), MotionEventTracker.ITrackDataReadyListener {
 
     private lateinit var appBarConfiguration: AppBarConfiguration
     private lateinit var binding: ActivityMainBinding
@@ -26,6 +29,8 @@ class MainActivity : AppCompatActivity() {
     companion object {
         var activityRef: WeakReference<MainActivity> ? = null
     }
+    var classifier: OperatingHandClassifier? = null
+    var tracker: MotionEventTracker? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -53,7 +58,11 @@ class MainActivity : AppCompatActivity() {
         )
         setupActionBarWithNavController(navController, appBarConfiguration)
         navView.setupWithNavController(navController)
-        MotionEventTracker.setupTracker(findViewById(R.id.debug_container))
+
+        tracker = MotionEventTracker(this)
+        tracker?.checkAndInit(findViewById(R.id.debug_container), this)
+        classifier = OperatingHandClassifier(this)
+        classifier?.checkAndInit()
     }
 
     override fun onPostResume() {
@@ -74,7 +83,7 @@ class MainActivity : AppCompatActivity() {
 
     override fun dispatchTouchEvent(ev: MotionEvent?): Boolean {
         ev?.let {
-            MotionEventTracker.recordMotionEvent(it)
+            tracker?.recordMotionEvent(it)
         }
         return super.dispatchTouchEvent(ev)
     }
@@ -82,6 +91,21 @@ class MainActivity : AppCompatActivity() {
     fun toast(tip: String) {
         binding.drawerLayout.post {
             Toast.makeText(this, tip, Toast.LENGTH_LONG).show()
+        }
+    }
+
+    override fun onTrackDataReady(pointList: JSONArray) {
+        classifier?.let {
+            it.classifyAsync(pointList).addOnSuccessListener { result ->
+                val tip = findViewById<TextView>(R.id.recognizedResult)
+                tip.post {
+                    tip.text = "AI识别结果：$result"
+                }
+                Log.d(MotionEventTracker.TAG, "classifying success. $result")
+            }
+            .addOnFailureListener { e ->
+                Log.e(MotionEventTracker.TAG, "Error classifying.", e)
+            }
         }
     }
 }

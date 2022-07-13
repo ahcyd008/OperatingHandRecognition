@@ -63,6 +63,6 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="6dp"
             android:paddingHorizontal="5dp"
-            android:textColor="#0000ff" />
+            android:textColor="#ff0000" />
     </LinearLayout>
 </LinearLayout>
