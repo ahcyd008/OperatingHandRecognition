@@ -8,6 +8,7 @@
 - 本案例与 https://github.com/ahcyd008/DigitalRecognition 同属于一个系列。
 
 - 可以用Android Studio 加载和编译此工程
+- 已经编译好的app位于 [readme/app-debug.apk](readme/app-debug.apk)
 
 - 模型训练和数据位于子目录 notebook中
 

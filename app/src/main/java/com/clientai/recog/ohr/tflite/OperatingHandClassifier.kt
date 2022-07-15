@@ -51,6 +51,7 @@ class OperatingHandClassifier(private val context: Context) {
 
         // Initialize TF Lite Interpreter with NNAPI enabled
         val options = Interpreter.Options()
+        // 测试发现 NNAPI 对 MaxPooling1D 有支持问题，如果遇到在手机端预测和python预测不准问题可以尝试关掉 NNAPI, 再check下
         options.useNNAPI = true
         val interpreter = Interpreter(model, options)
 
