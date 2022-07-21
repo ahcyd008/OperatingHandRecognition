@@ -45,5 +45,5 @@ pip install numpy tensorflow
 - 将自己训练好的 mymodel.tflite 模型放到Android工程的assets目录下
 - 加载模型代码位于 OperatingHandClassifier#loadModelFile 方法中。
 ```
-val fileDescriptor = assetManager.openFd(MODEL_FILE) // 使用全连接网络模型
+val fileDescriptor = assetManager.openFd(MODEL_FILE) // 使用网络模型
 ```
